@@ -249,15 +249,21 @@ class IndicatorAnalyzer:
                 # Find first year where value <= threshold
                 mask = country_data['indicator'] <= threshold
                 
-            if mask.any():
-                first_year = country_data[mask].iloc[0]['year']
-                value = country_data[mask].iloc[0]['indicator']
-                results.append({
-                    'Country': country,
-                    'Year': first_year,
-                    'Value': value,
-                    'Threshold': threshold
-                })
+            # Add robust error handling to prevent index errors
+            try:
+                if mask.any() and not country_data[mask].empty:
+                    first_year = country_data[mask].iloc[0]['year']
+                    value = country_data[mask].iloc[0]['indicator']
+                    results.append({
+                        'Country': country,
+                        'Year': first_year,
+                        'Value': value,
+                        'Threshold': threshold
+                    })
+            except (IndexError, KeyError) as e:
+                # Skip this country if there's an error
+                print(f"Error processing {country}: {str(e)}")
+                continue
         
         return pd.DataFrame(results)
         
@@ -278,23 +284,32 @@ class IndicatorAnalyzer:
         Returns:
             DataFrame with year and count of developed countries
         """
-        # Get threshold years for all countries
-        df = self.find_threshold_year(indicator_name, threshold, indicator_type, start_year, end_year)
-        
-        # Create a year range
-        years = range(start_year, end_year + 1)
-        timeline = []
-        
-        # Count how many countries were developed by each year
-        for year in years:
-            count = len(df[df['Year'] <= year])
-            timeline.append({
-                'Year': year,
-                'Developed Countries': count,
-                'Total Countries': len(df['Country'].unique())
-            })
+        try:
+            # Get threshold years for all countries
+            df = self.find_threshold_year(indicator_name, threshold, indicator_type, start_year, end_year)
             
-        return pd.DataFrame(timeline)
+            # Create a year range
+            years = range(start_year, end_year + 1)
+            timeline = []
+            
+            # Add safety check for empty DataFrame
+            total_countries = len(df['Country'].unique()) if not df.empty else 0
+            
+            # Count how many countries were developed by each year
+            for year in years:
+                count = len(df[df['Year'] <= year]) if not df.empty else 0
+                timeline.append({
+                    'Year': year,
+                    'Developed Countries': count,
+                    'Total Countries': total_countries
+                })
+                
+            return pd.DataFrame(timeline)
+        except Exception as e:
+            print(f"Error in get_development_timeline: {str(e)}")
+            # Return an empty timeline with the requested years
+            timeline = [{'Year': year, 'Developed Countries': 0, 'Total Countries': 0} for year in range(start_year, end_year + 1)]
+            return pd.DataFrame(timeline)
     
     def get_country_indicator_history(self, country: str, indicator_name: str) -> pd.DataFrame:
         """

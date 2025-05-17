@@ -125,16 +125,21 @@ with st.sidebar:
         # Year range
         st.subheader("Time Range")
         years = sorted(df['year'].unique())
-        if len(years) > 1:
-            min_year, max_year = st.slider(
-                "Select year range",
-                min_value=int(min(years)),
-                max_value=int(max(years)),
-                value=(int(min(years)), int(max(years)))
-            )
+        if len(years) > 0:  # Added additional check to make sure years is not empty
+            if len(years) > 1:
+                min_year, max_year = st.slider(
+                    "Select year range",
+                    min_value=int(min(years)),
+                    max_value=int(max(years)),
+                    value=(int(min(years)), int(max(years)))
+                )
+            else:
+                min_year = max_year = int(years[0])
+                st.warning(f"Only data for year {min_year} available")
         else:
-            min_year = max_year = int(years[0])
-            st.warning(f"Only data for year {min_year} available")
+            st.error("No year data available for the selected indicator.")
+            min_year, max_year = 1990, 2020  # Default fallback values
+            st.warning(f"Using default year range: {min_year} - {max_year}")
         
     except Exception as e:
         st.error(f"Error loading indicator data: {str(e)}")
