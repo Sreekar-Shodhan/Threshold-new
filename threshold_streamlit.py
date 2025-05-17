@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
 import numpy as np
+import os
 from indicator_analyzer import IndicatorAnalyzer
 
 # Set page config
@@ -47,13 +48,32 @@ st.markdown("""
 
 # Initialize the analyzer
 try:
+    # Add debugging information
+    st.sidebar.expander("🔍 Debug Information", expanded=False).write(
+        f"Working Directory: {os.getcwd()}\n"
+        f"Data Directory Path: {Path('DATACSV').absolute()}\n"
+        f"Data Directory Exists: {Path('DATACSV').exists()}\n"
+        f"Files in Data Directory: {[f.name for f in Path('DATACSV').glob('*') if f.is_file()]}\n"
+    )
+    
     analyzer = IndicatorAnalyzer()
     available_indicators = analyzer.indicators
+    
+    # Show more debug info after analyzer is initialized
+    st.sidebar.expander("🔍 Analyzer Debug Info", expanded=False).write(
+        f"Indicators Found: {list(available_indicators.keys())}\n"
+        f"Indicator Files: {list(available_indicators.values())}\n"
+    )
+    
     if not available_indicators:
         st.error("No indicator data found. Please check if the DATACSV directory contains valid CSV files.")
         st.stop()
 except Exception as e:
     st.error(f"Error initializing analyzer: {str(e)}")
+    # Add error details for debugging
+    st.error(f"Error details: {type(e).__name__}")
+    import traceback
+    st.code(traceback.format_exc(), language="python")
     st.stop()
 
 # Cache the indicator data
