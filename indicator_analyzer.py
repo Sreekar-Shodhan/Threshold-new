@@ -152,61 +152,110 @@ class IndicatorAnalyzer:
         Returns:
             DataFrame with the indicator data in long format (country, year, value)
         """
-        if indicator_name not in self.indicators:
-            raise ValueError(f"Indicator '{indicator_name}' not found in available indicators")
+        try:
+            if indicator_name not in self.indicators:
+                raise ValueError(f"Indicator '{indicator_name}' not found in available indicators")
+                
+            file_path = self.indicators[indicator_name]
+            print(f"Loading data from: {file_path}")
             
-        file_path = self.indicators[indicator_name]
-        
-        # Read the CSV file
-        df = pd.read_csv(file_path)
-        
-        # Reset triplets when loading new data
-        self.triplets = []
-        
-        # Handle different file formats
-        if 'country' in df.columns and 'year' in df.columns and 'value' in df.columns:
-            # Already in long format with standard column names
-            df = df.rename(columns={'value': 'indicator'})
-        elif 'Entity' in df.columns and 'Year' in df.columns and 'Value' in df.columns:
-            # Our World in Data format
-            df = df.rename(columns={
-                'Entity': 'country',
-                'Year': 'year',
-                'Value': 'indicator'
-            })
-        elif len(df.columns) > 2 and df.columns[0].lower() == 'entity':
-            # Wide format with years as columns
-            df = df.melt(
-                id_vars=[df.columns[0]],
-                var_name='year',
-                value_name='indicator'
-            ).rename(columns={df.columns[0]: 'country'})
-        else:
-            # Try to handle other formats
-            if 'country' not in df.columns and len(df.columns) > 1:
-                df = df.rename(columns={df.columns[0]: 'country'})
+            # Read the CSV file with additional error handling
+            try:
+                df = pd.read_csv(file_path)
+                print(f"CSV loaded successfully. Shape: {df.shape}, Columns: {df.columns.tolist()}")
+            except Exception as e:
+                print(f"Error reading CSV: {str(e)}")
+                # Return empty DataFrame with proper structure
+                return pd.DataFrame(columns=['country', 'year', 'indicator'])
             
-            # Convert wide to long format if needed
-            if 'year' not in df.columns and 'indicator' not in df.columns:
-                df = df.melt(
-                    id_vars=['country'],
-                    var_name='year',
-                    value_name='indicator'
-                )
-        
-        # Clean up year column if it contains non-numeric values
-        if 'year' in df.columns and df['year'].dtype == 'object':
-            df['year'] = pd.to_numeric(df['year'].astype(str).str.extract('(\d+)')[0], errors='coerce')
-            df = df.dropna(subset=['year'])
-            df['year'] = df['year'].astype(int)
-        
-        # Clean up indicator values
-        if 'indicator' in df.columns:
-            df['indicator'] = pd.to_numeric(df['indicator'], errors='coerce')
-        
-        # Add data to analyzer
-        self.add_triplets(df[['country', 'year', 'indicator']].dropna().to_dict('records'))
-        return df[['country', 'year', 'indicator']].dropna()
+            # Reset triplets when loading new data
+            self.triplets = []
+            
+            # Handle common file formats - first check OWID standard format
+            if 'Entity' in df.columns and 'Year' in df.columns:
+                print("Detected OWID format")
+                value_col = next((col for col in df.columns if col not in ['Entity', 'Year', 'Code']), 'Value')
+                df = df.rename(columns={
+                    'Entity': 'country',
+                    'Year': 'year',
+                    value_col: 'indicator'
+                })
+            # Check for standard column names
+            elif 'country' in df.columns and 'year' in df.columns:
+                print("Detected standard format")
+                value_col = next((col for col in df.columns if col not in ['country', 'year', 'code']), 'value')
+                df = df.rename(columns={value_col: 'indicator'})
+            # Check for wide format (country in first column, years as other columns)
+            elif len(df.columns) > 2:
+                print("Attempting to convert from wide format")
+                country_col = df.columns[0]
+                # Melt the dataframe to convert from wide to long format
+                try:
+                    df = df.melt(
+                        id_vars=[country_col],
+                        var_name='year',
+                        value_name='indicator'
+                    ).rename(columns={country_col: 'country'})
+                    print(f"Melted to long format. New shape: {df.shape}")
+                except Exception as e:
+                    print(f"Error melting DataFrame: {str(e)}")
+                    # Provide a fallback empty DataFrame
+                    return pd.DataFrame(columns=['country', 'year', 'indicator'])
+            
+            # Ensure required columns exist
+            missing_cols = [col for col in ['country', 'year', 'indicator'] if col not in df.columns]
+            if missing_cols:
+                print(f"Missing columns: {missing_cols}")
+                # Try to infer missing columns if possible
+                if 'country' not in df.columns and df.shape[1] > 0:
+                    df['country'] = df.iloc[:, 0] if df.shape[1] > 0 else 'Unknown'
+                if 'year' not in df.columns and df.shape[1] > 1:
+                    df['year'] = df.iloc[:, 1] if df.shape[1] > 1 else 2020
+                if 'indicator' not in df.columns and df.shape[1] > 2:
+                    df['indicator'] = df.iloc[:, 2] if df.shape[1] > 2 else 0.0
+            
+            # Clean up year column - more robust parsing
+            if 'year' in df.columns:
+                print(f"Year column dtype before cleaning: {df['year'].dtype}")
+                if df['year'].dtype != 'int64':
+                    # Try to extract years from strings like '1990' or '1990s' or 'year_1990'
+                    try:
+                        df['year'] = pd.to_numeric(df['year'].astype(str).str.extract('(\d{4}|\d{2})', expand=False), errors='coerce')
+                        # Fix 2-digit years
+                        mask_2digit = (df['year'] < 100) & (df['year'] >= 0)
+                        df.loc[mask_2digit, 'year'] = df.loc[mask_2digit, 'year'] + 1900
+                        # Drop rows with missing years
+                        df = df.dropna(subset=['year'])
+                        df['year'] = df['year'].astype(int)
+                        print(f"Cleaned years, count: {len(df['year'].unique())}")
+                    except Exception as e:
+                        print(f"Error cleaning years: {str(e)}")
+            
+            # Clean up indicator values
+            if 'indicator' in df.columns:
+                print(f"Indicator column dtype before cleaning: {df['indicator'].dtype}")
+                df['indicator'] = pd.to_numeric(df['indicator'], errors='coerce')
+            
+            # Print some diagnostics
+            print(f"Final DataFrame shape: {df.shape}")
+            print(f"Unique countries: {len(df['country'].unique())}")
+            print(f"Unique years: {sorted(df['year'].unique().tolist()) if 'year' in df.columns else 'No year column'}")
+            
+            # Ensure all required columns exist and drop rows with NaN values
+            result_df = df.reindex(columns=['country', 'year', 'indicator']).dropna()
+            print(f"Final clean data shape: {result_df.shape}")
+            
+            # Add data to analyzer
+            if not result_df.empty:
+                self.add_triplets(result_df.to_dict('records'))
+            
+            return result_df
+        except Exception as e:
+            print(f"Error in load_indicator_data: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            # Return empty DataFrame with proper structure
+            return pd.DataFrame(columns=['country', 'year', 'indicator'])
     
     def find_threshold_year(self, 
                           indicator_name: str, 
