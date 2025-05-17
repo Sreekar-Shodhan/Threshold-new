@@ -1,0 +1,24 @@
+
+triplets
+-> rows
+each row has country , year , indicator
+max for indicator depending on type of indicator 
+
+
+this indicator -> that value 
+we use the triplet to get value for that particular indicato
+then we can have multiple triplets 
+at which time when that country became developed
+take all countries -> then plot on a single line 1960-2025 -> In which year every country became developed 
+
+indicator , value 
+plot for that indicator 
+whne tahts done we can take multipel of that sets 
+
+after that choose by country and year 
+plot the value of today -> china 1980 developed and current value is what rn? 
+
+above works only for one indicator 
+
+
+
