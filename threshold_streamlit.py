@@ -321,55 +321,69 @@ with tab3:
             try:
                 # Try to get country codes from the dataset if available
                 if 'iso_alpha3' not in year_df.columns:
-                    import pycountry
-                    
-                    def get_iso_code(country_name):
-                        try:
-                            return pycountry.countries.get(name=country_name).alpha_3
-                        except:
+                    try:
+                        import pycountry
+                        
+                        def get_iso_code(country_name):
                             try:
-                                return pycountry.countries.lookup(country_name).alpha_3
+                                return pycountry.countries.get(name=country_name).alpha_3
                             except:
-                                return None
-                    
-                    year_df['iso_alpha3'] = year_df['country'].apply(get_iso_code)
+                                try:
+                                    return pycountry.countries.lookup(country_name).alpha_3
+                                except:
+                                    return None
+                        
+                        year_df['iso_alpha3'] = year_df['country'].apply(get_iso_code)
+                    except ImportError:
+                        st.error("Error creating map: No module named 'pycountry'")
+                        st.info("Displaying data in a table instead.")
+                        # Create a country -> ISO code mapping for common countries as fallback
+                        st.dataframe(year_df.sort_values('indicator', ascending=False), use_container_width=True)
+                        raise ImportError("pycountry module not available")
                 
                 # Filter out rows with missing country codes
                 map_df = year_df.dropna(subset=['iso_alpha3'])
                 
                 if not map_df.empty:
                     # Create choropleth map with ISO-3 codes
-                    fig = px.choropleth(
-                        map_df,
-                        locations="iso_alpha3",
-                        color="indicator",
-                        hover_name="country",
-                        hover_data={"iso_alpha3": False, 'indicator': ':.2f'},
-                        color_continuous_scale=px.colors.sequential.Plasma,
-                        title=f"{selected_indicator} by Country ({year})",
-                        labels={'indicator': selected_indicator},
-                        projection="natural earth"
-                    )
-                    
-                    # Update layout for better appearance
-                    fig.update_layout(
-                        coloraxis_colorbar=dict(
-                            title=selected_indicator,
-                            thicknessmode="pixels", 
-                            thickness=20,
-                            lenmode="pixels", 
-                            len=300,
-                            yanchor="top", 
-                            y=1,
-                            dtick=5
-                        ),
-                        geo=dict(
-                            showframe=False,
-                            showcoastlines=True,
-                            projection_type='equirectangular'
-                        ),
-                        margin=dict(l=0, r=0, t=50, b=0)
-                    )
+                    try:
+                        fig = px.choropleth(
+                            map_df,
+                            locations="iso_alpha3",
+                            color="indicator",
+                            hover_name="country",
+                            hover_data={"iso_alpha3": False, 'indicator': ':.2f'},
+                            color_continuous_scale=px.colors.sequential.Plasma,
+                            title=f"{selected_indicator} by Country ({year})",
+                            labels={'indicator': selected_indicator}
+                        )
+                        
+                        # Update layout for better appearance with all settings in one place
+                        fig.update_layout(
+                            coloraxis_colorbar=dict(
+                                title=selected_indicator,
+                                thicknessmode="pixels", 
+                                thickness=20,
+                                lenmode="pixels", 
+                                len=300,
+                                yanchor="top", 
+                                y=1,
+                                dtick=5
+                            ),
+                            geo=dict(
+                                showframe=False,
+                                showcoastlines=True,
+                                projection_type='equirectangular'
+                            ),
+                            margin=dict(l=0, r=0, t=50, b=0)
+                        )
+                        
+                        # Display the map
+                        st.plotly_chart(fig, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"An error occurred while creating the map: {str(e)}")
+                        st.info("Displaying data in a table instead.")
+                        st.dataframe(year_df.sort_values('indicator', ascending=False), use_container_width=True)
                 else:
                     st.warning("No valid country codes found for mapping. Displaying data in a table instead.")
                     fig = None
